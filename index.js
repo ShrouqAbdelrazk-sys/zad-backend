@@ -1,170 +1,77 @@
-'use strict';
+/*!
+ * depd
+ * Copyright(c) 2015 Douglas Christopher Wilson
+ * MIT Licensed
+ */
 
-const stringify = require('./lib/stringify');
-const compile = require('./lib/compile');
-const expand = require('./lib/expand');
-const parse = require('./lib/parse');
+'use strict'
 
 /**
- * Expand the given pattern or create a regex-compatible string.
+ * Module exports.
+ * @public
+ */
+
+module.exports = depd
+
+/**
+ * Create deprecate for namespace in caller.
+ */
+
+function depd (namespace) {
+  if (!namespace) {
+    throw new TypeError('argument namespace is required')
+  }
+
+  function deprecate (message) {
+    // no-op in browser
+  }
+
+  deprecate._file = undefined
+  deprecate._ignored = true
+  deprecate._namespace = namespace
+  deprecate._traced = false
+  deprecate._warned = Object.create(null)
+
+  deprecate.function = wrapfunction
+  deprecate.property = wrapproperty
+
+  return deprecate
+}
+
+/**
+ * Return a wrapped function in a deprecation message.
  *
- * ```js
- * const braces = require('braces');
- * console.log(braces('{a,b,c}', { compile: true })); //=> ['(a|b|c)']
- * console.log(braces('{a,b,c}')); //=> ['a', 'b', 'c']
- * ```
- * @param {String} `str`
- * @param {Object} `options`
- * @return {String}
- * @api public
+ * This is a no-op version of the wrapper, which does nothing but call
+ * validation.
  */
 
-const braces = (input, options = {}) => {
-  let output = [];
-
-  if (Array.isArray(input)) {
-    for (const pattern of input) {
-      const result = braces.create(pattern, options);
-      if (Array.isArray(result)) {
-        output.push(...result);
-      } else {
-        output.push(result);
-      }
-    }
-  } else {
-    output = [].concat(braces.create(input, options));
+function wrapfunction (fn, message) {
+  if (typeof fn !== 'function') {
+    throw new TypeError('argument fn must be a function')
   }
 
-  if (options && options.expand === true && options.nodupes === true) {
-    output = [...new Set(output)];
-  }
-  return output;
-};
+  return fn
+}
 
 /**
- * Parse the given `str` with the given `options`.
+ * Wrap property in a deprecation message.
  *
- * ```js
- * // braces.parse(pattern, [, options]);
- * const ast = braces.parse('a/{b,c}/d');
- * console.log(ast);
- * ```
- * @param {String} pattern Brace pattern to parse
- * @param {Object} options
- * @return {Object} Returns an AST
- * @api public
+ * This is a no-op version of the wrapper, which does nothing but call
+ * validation.
  */
 
-braces.parse = (input, options = {}) => parse(input, options);
-
-/**
- * Creates a braces string from an AST, or an AST node.
- *
- * ```js
- * const braces = require('braces');
- * let ast = braces.parse('foo/{a,b}/bar');
- * console.log(stringify(ast.nodes[2])); //=> '{a,b}'
- * ```
- * @param {String} `input` Brace pattern or AST.
- * @param {Object} `options`
- * @return {Array} Returns an array of expanded values.
- * @api public
- */
-
-braces.stringify = (input, options = {}) => {
-  if (typeof input === 'string') {
-    return stringify(braces.parse(input, options), options);
-  }
-  return stringify(input, options);
-};
-
-/**
- * Compiles a brace pattern into a regex-compatible, optimized string.
- * This method is called by the main [braces](#braces) function by default.
- *
- * ```js
- * const braces = require('braces');
- * console.log(braces.compile('a/{b,c}/d'));
- * //=> ['a/(b|c)/d']
- * ```
- * @param {String} `input` Brace pattern or AST.
- * @param {Object} `options`
- * @return {Array} Returns an array of expanded values.
- * @api public
- */
-
-braces.compile = (input, options = {}) => {
-  if (typeof input === 'string') {
-    input = braces.parse(input, options);
-  }
-  return compile(input, options);
-};
-
-/**
- * Expands a brace pattern into an array. This method is called by the
- * main [braces](#braces) function when `options.expand` is true. Before
- * using this method it's recommended that you read the [performance notes](#performance))
- * and advantages of using [.compile](#compile) instead.
- *
- * ```js
- * const braces = require('braces');
- * console.log(braces.expand('a/{b,c}/d'));
- * //=> ['a/b/d', 'a/c/d'];
- * ```
- * @param {String} `pattern` Brace pattern
- * @param {Object} `options`
- * @return {Array} Returns an array of expanded values.
- * @api public
- */
-
-braces.expand = (input, options = {}) => {
-  if (typeof input === 'string') {
-    input = braces.parse(input, options);
+function wrapproperty (obj, prop, message) {
+  if (!obj || (typeof obj !== 'object' && typeof obj !== 'function')) {
+    throw new TypeError('argument obj must be object')
   }
 
-  let result = expand(input, options);
+  var descriptor = Object.getOwnPropertyDescriptor(obj, prop)
 
-  // filter out empty strings if specified
-  if (options.noempty === true) {
-    result = result.filter(Boolean);
+  if (!descriptor) {
+    throw new TypeError('must call property on owner object')
   }
 
-  // filter out duplicates if specified
-  if (options.nodupes === true) {
-    result = [...new Set(result)];
+  if (!descriptor.configurable) {
+    throw new TypeError('property must be configurable')
   }
-
-  return result;
-};
-
-/**
- * Processes a brace pattern and returns either an expanded array
- * (if `options.expand` is true), a highly optimized regex-compatible string.
- * This method is called by the main [braces](#braces) function.
- *
- * ```js
- * const braces = require('braces');
- * console.log(braces.create('user-{200..300}/project-{a,b,c}-{1..10}'))
- * //=> 'user-(20[0-9]|2[1-9][0-9]|300)/project-(a|b|c)-([1-9]|10)'
- * ```
- * @param {String} `pattern` Brace pattern
- * @param {Object} `options`
- * @return {Array} Returns an array of expanded values.
- * @api public
- */
-
-braces.create = (input, options = {}) => {
-  if (input === '' || input.length < 3) {
-    return [input];
-  }
-
-  return options.expand !== true
-    ? braces.compile(input, options)
-    : braces.expand(input, options);
-};
-
-/**
- * Expose "braces"
- */
-
-module.exports = braces;
+}
